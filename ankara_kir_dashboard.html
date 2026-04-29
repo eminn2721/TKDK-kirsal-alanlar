@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ankara Kırsal Alan Haritası — TKDK</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#07090f; --surface:#0f1623; --surface2:#151e2e; --border:#1e3048;
+  --green:#22c55e; --green-dim:#16a34a; --green-dark:#14532d; --green-pale:#bbf7d0;
+  --text:#e2e8f0; --muted:#64748b; --accent:#38bdf8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* HEADER */
+#hdr{
+  background:linear-gradient(90deg,#071a2f 0%,#0f2d1a 100%);
+  border-bottom:1px solid var(--border);
+  padding:10px 24px;display:flex;align-items:center;gap:32px;flex-shrink:0;
+  box-shadow:0 2px 20px rgba(0,0,0,.6);
+}
+#hdr h1{font-size:.95rem;font-weight:700;color:#f0fdf4;letter-spacing:.3px}
+#hdr .sub{font-size:.7rem;color:var(--muted);margin-top:1px}
+.kpi{display:flex;flex-direction:column;align-items:center;padding:0 20px;border-left:1px solid var(--border)}
+.kpi .val{font-size:1.4rem;font-weight:800;color:var(--green);line-height:1}
+.kpi .lbl{font-size:.65rem;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.5px}
+#search-wrap{margin-left:auto;position:relative}
+#search-wrap input{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:6px 12px 6px 32px;color:var(--text);font-size:.8rem;width:200px;outline:none;transition:border .2s}
+#search-wrap input:focus{border-color:var(--green-dim)}
+#search-wrap::before{content:'⌕';position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:1rem;pointer-events:none}
+
+/* BODY */
+#body{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+#sidebar{
+  width:340px;flex-shrink:0;
+  background:var(--surface);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#chart-wrap{padding:14px;border-bottom:1px solid var(--border);flex-shrink:0}
+#chart-wrap h3{font-size:.7rem;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);margin-bottom:10px}
+#barChart{max-height:220px}
+#list-header{padding:10px 14px 8px;border-bottom:1px solid var(--border);flex-shrink:0}
+#list-header h3{font-size:.7rem;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+#list-header .count{font-size:.72rem;color:var(--green);font-weight:600;margin-top:2px}
+#list{flex:1;overflow-y:auto;padding:8px 0}
+#list::-webkit-scrollbar{width:4px}
+#list::-webkit-scrollbar-track{background:transparent}
+#list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.ilce-group{}
+.ilce-hdr{
+  padding:7px 14px;font-size:.72rem;font-weight:700;color:var(--green);
+  display:flex;align-items:center;justify-content:space-between;
+  cursor:pointer;user-select:none;transition:background .15s;
+  position:sticky;top:0;background:var(--surface);z-index:1;
+}
+.ilce-hdr:hover{background:var(--surface2)}
+.ilce-hdr .badge{background:var(--green-dark);color:var(--green-pale);font-size:.65rem;padding:1px 7px;border-radius:10px}
+.ilce-hdr .arrow{font-size:.7rem;color:var(--muted);transition:transform .2s}
+.ilce-hdr.open .arrow{transform:rotate(90deg)}
+.mah-list{display:none;padding:0 0 4px 0}
+.ilce-hdr.open + .mah-list{display:block}
+.mah-item{
+  padding:5px 14px 5px 24px;font-size:.77rem;color:#94a3b8;
+  cursor:pointer;transition:all .15s;border-left:2px solid transparent;margin-left:14px;
+}
+.mah-item:hover{color:#f0fdf4;background:var(--surface2);border-left-color:var(--green)}
+.mah-item.highlight{color:var(--green);background:rgba(34,197,94,.07);border-left-color:var(--green)}
+.hidden{display:none!important}
+
+/* MAP */
+#map{flex:1}
+.leaflet-popup-content-wrapper{background:rgba(10,15,30,.97);color:var(--text);border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
+.leaflet-popup-tip{background:rgba(10,15,30,.97)}
+.leaflet-popup-content{margin:14px 16px}
+.popup-title{font-size:1rem;font-weight:700;color:#f0fdf4;border-bottom:2px solid var(--green);padding-bottom:7px;margin-bottom:10px}
+.popup-count{font-size:1.8rem;font-weight:800;color:var(--green);line-height:1}
+.popup-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.popup-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:10px;max-height:160px;overflow-y:auto}
+.popup-mah{font-size:.74rem;color:#94a3b8;padding:3px 6px;background:var(--surface2);border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.popup-note{font-size:.68rem;color:var(--muted);margin-top:8px;padding-top:6px;border-top:1px solid var(--border);color:var(--green);font-weight:600}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <div>
+    <h1>Ankara İli — Kırsal Alan Haritası</h1>
+    <div class="sub">TKDK Kent-Kır Sınıflaması · 31 Aralık 2022 · Hibe Desteğine Uygun Alanlar</div>
+  </div>
+  <div class="kpi"><div class="val">956</div><div class="lbl">Kırsal Yerleşim</div></div>
+  <div class="kpi"><div class="val">25</div><div class="lbl">İlçe</div></div>
+  <div class="kpi"><div class="val">105</div><div class="lbl">En Fazla (Kızılcahamam)</div></div>
+  <div id="search-wrap"><input type="text" id="search" placeholder="Mahalle / köy ara…" oninput="onSearch(this.value)"></div>
+</div>
+
+<div id="body">
+  <div id="sidebar">
+    <div id="chart-wrap">
+      <h3>İlçe Bazlı Kırsal Yerleşim Sayısı</h3>
+      <canvas id="barChart"></canvas>
+    </div>
+    <div id="list-header">
+      <h3>Yerleşim Birimleri</h3>
+      <div class="count" id="list-count">956 yerleşim · 25 ilçe</div>
+    </div>
+    <div id="list"></div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script>
+const GEO      = {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"ilce": "AKYURT", "count": 20, "intensity": 0.1905, "settlements": ["AHMETADİL", "BALIKHİSAR", "BÜĞDÜZ", "CÜCÜK", "ELECİK", "GÜZELHİSAR", "HAYDAR", "KARACAKAYA", "KARACALAR", "KARAYATAK", "KIZIK", "KOZAYAĞI", "SAMUT", "TEBERİK", "TİMURHAN", "UZUNLAR", "ÇAM", "ÇARDAKBAĞI", "ÇINAR", "ŞEYHLER"], "lat": 40.1338, "lon": 33.0895}, "geometry": {"type": "Polygon", "coordinates": [[[32.9668994941156, 40.140002879391304], [33.226880800252886, 40.264705360196984], [33.26043045193762, 40.19164864204237], [33.11597667259867, 40.02321963160379], [33.00475182987996, 40.0648502210925], [32.9668994941156, 40.140002879391304]]]}}, {"type": "Feature", "properties": {"ilce": "ALTINDAĞ", "count": 5, "intensity": 0.0476, "settlements": ["AYDINCIK", "GİCİK", "KAVAKLI", "PEÇENEK", "TATLAR"], "lat": 39.9532, "lon": 32.8782}, "geometry": {"type": "Polygon", "coordinates": [[[32.95010471792754, 39.98043873923049], [32.95275868634876, 39.88409968554005], [32.79504363801468, 39.93627757294146], [32.79727326494901, 39.966294616544985], [32.923061293168644, 39.987055747416186], [32.95010471792754, 39.98043873923049]]]}}, {"type": "Feature", "properties": {"ilce": "AYAŞ", "count": 33, "intensity": 0.3143, "settlements": ["AKKAYA", "BAYAT", "BAYRAM", "BAŞAYAŞ", "BAŞBEREKET", "CAMİATİK", "DERVİŞİMAM", "EMİNE TEVFİKA AYAŞLI", "EVCİ", "FERAHFAKİ", "FERUZ", "GENÇALİ", "GÖKLER", "GÖKÇEBAĞ", "HACIMEMİ", "HACIRECEP", "HACIVELİ", "ILICA", "OLTAN", "ORTABEREKET", "PINARYAKA", "SİNANLI CUMA", "SİNANLI HOCASİNAN", "SİNANLI MAHKEME", "TEKKE", "ULUPINAR", "UĞURÇAYIRI", "YAĞMURDEDE", "ÇANILLI ULUYOL", "ÇANILLI ÇİĞDEMCİ", "ÖMEROĞLU", "İLHANKÖY", "ŞEYHMUHİTTİN"], "lat": 40.0173, "lon": 32.347}, "geometry": {"type": "Polygon", "coordinates": [[[32.06053893577386, 39.88667471227759], [32.10760716694487, 40.01878844222231], [32.46501621226635, 40.206455077353496], [32.49549128513941, 40.15620959625514], [32.41246099357492, 39.72489294892458], [32.06053893577386, 39.88667471227759]]]}}, {"type": "Feature", "properties": {"ilce": "BALA", "count": 55, "intensity": 0.5238, "settlements": ["ABAZLI", "AFŞAR", "AHMETÇAYIRI", "AKKOYUNLU", "AYDOĞAN", "AŞAĞIHACIBEKİR", "AŞIKOĞLU", "BAHÇEKARADALAK", "BEKTAŞLI", "BELÇARŞAK", "BEYNAM", "BÜYÜKBAYAT", "BÜYÜKBOYALIK", "BÜYÜKCAMİLİ", "DAVDANLI", "DEREKIŞLA", "ERGİN", "EĞRİBASAN", "GÖZTEPE", "GÜLBAĞI", "HAMİDİYE", "HANBURUN", "KARAHAMZALI", "KARTALTEPE", "KERİŞLİ", "KESİKKÖPRÜ", "KESİKKÖPRÜ ERDEMLİ", "KESİKKÖPRÜ KIZILIRMAK", "KOÇYAYLA", "KUYULAR", "KÖSELİ", "KÜÇÜKBAYAT", "KÜÇÜKBIYIK", "KÜÇÜKBOYALIK", "KÜÇÜKCAMİLİ", "SARIHÜYÜK", "SIRAPINAR", "SOFULAR", "SUYUGÜZEL", "TATARHÜYÜK", "TEPEKÖY", "TOLKÖY", "YAYLALIÖZÜ", "YENİKÖY", "YENİYAPANÇARŞAK", "YENİYAPANŞEYHLİ", "YUKARIHACIBEKİR", "YÖRELİ", "ÇATALÇEŞME", "ÇATALÖREN", "ÇİĞDEMLİ", "ÜÇEM", "İSMETPAŞA", "ŞEHRİBAN", "ŞENTEPE"], "lat": 39.553, "lon": 33.1224}, "geometry": {"type": "Polygon", "coordinates": [[[33.182423414441196, 39.781925378598906], [33.28398808324585, 39.758368721850765], [33.273092, 39.727496], [33.298004, 39.642796], [33.377721, 39.568061], [33.406016, 39.529731], [33.444753, 39.387397], [33.44689478559355, 39.38415735591023], [33.1855653873802, 39.18421205807539], [33.166069, 39.188926], [33.148086, 39.196781], [33.104781, 39.222102], [33.062406, 39.222077], [33.043389, 39.202078], [33.032124, 39.17549], [33.023649, 39.123607], [33.009076, 39.105081], [32.965771, 39.110507], [32.907997, 39.144949], [32.87707599271427, 39.15284624950446], [32.814391329922174, 39.47405359642676], [33.00811277227572, 39.730862222602426], [33.02204473215499, 39.742644108073584], [33.182423414441196, 39.781925378598906]]]}}, {"type": "Feature", "properties": {"ilce": "BEYPAZARI", "count": 68, "intensity": 0.6476, "settlements": ["ACISU", "ADAÖREN", "AKÇAKAVAK", "AKÇALI", "AŞAĞIGÜNEY", "BATÇA", "BAĞÖZÜ", "BAŞÖREN", "BOYALI", "DAĞŞEYHLER", "DERELİ", "DOĞANYURT", "DOĞANÇALI", "DUDAŞ", "DİBECİK", "DİBEKÖREN", "DİKMEN", "FASIL", "GEYİKPINARI", "GÜRSÖĞÜT", "HARMANCIK", "HAYDARLAR", "HIRKATEPE", "KABACA", "KABALAR", "KAPLAN", "KAPULLU", "KARACAÖREN", "KARAÖREN", "KARAŞAR", "KARGI", "KAYABÜKÜ", "KERBANLAR", "KIRBAŞI", "KIRŞEYHLER", "KIZILCASÖĞÜT", "KOZALAN", "KOZAĞAÇ", "KURTKOVAN", "KUYUCAK", "KUYUMCUTEKKE", "KÖSELER", "KÖST", "MACUN", "MAHMUTLAR", "MENÇELER", "MİKAİL", "NUHHOCA", "OYMAAĞAÇ", "SARAY", "SARIAĞIL", "SEKLİ", "SOPÇAALAN", "TACETTİN", "TAHİR", "URUŞ", "UŞAKGÖL", "YALNIZÇAM", "YEŞİLAĞAÇ", "YILDIZ", "YOĞUNPELİT", "YUKARIGÜNEY", "YUKARIULUCAK", "YİĞERLER", "ÇAKILOBA", "ÇANTIRLI", "ÜREĞİL", "İNCEPELİT"], "lat": 40.169, "lon": 31.9212}, "geometry": {"type": "Polygon", "coordinates": [[[32.06053893577386, 39.88667471227759], [31.881261381713283, 39.817177069484266], [31.879533, 39.838292], [31.86713, 39.845294], [31.852454, 39.86196], [31.845013, 39.876068], [31.81163, 39.878135], [31.782277, 39.890537], [31.756956, 39.920251], [31.743003, 39.95136], [31.738663, 39.976397], [31.726054, 39.994071], [31.726984, 40.023526], [31.681198, 40.018385], [31.640271, 40.040063], [31.63411152748733, 40.038347154240334], [31.64223237900189, 40.33137023595989], [31.657737, 40.336143], [31.696495, 40.339993], [31.821448, 40.338417], [31.906094, 40.353351], [31.975134, 40.377096], [32.05226356694835, 40.39134252941056], [32.10760716694487, 40.01878844222231], [32.06053893577386, 39.88667471227759]]]}}, {"type": "Feature", "properties": {"ilce": "ÇAMLIDERE", "count": 48, "intensity": 0.4571, "settlements": ["AHATLAR", "AKKAYA", "ALAKOÇ", "ATÇA", "AVDAN", "AVŞARLAR", "BARDAKÇILAR", "BAYINDIR", "BEYLER", "BEŞBEYLER", "BUĞRALAR", "BÖKELER", "DAĞKUZÖREN", "DOYMUŞ", "DOĞANCI", "DOĞANLAR", "DÖRTKONAK", "ELDELEK", "ELMALI", "ELVANLAR", "ELÖREN", "GÜMELE", "GÜNEY", "KAYABAŞI", "KUYUBAŞI", "KUŞÇULAR", "KÖRLER", "MEŞELER", "MUZRUPAĞACIN", "MÜSELLİM", "ORTA", "OSMANSİN", "PELİTÇİK", "PEÇENEK", "SARIKAVAK", "TATLAK", "YAHYALAR", "YAHŞİHAN", "YAYALAR", "YEDİÖREN", "YILANLI", "YONCATEPE", "ÇAMKÖY", "ÇUKURÖREN", "ÖMERAĞA", "ÖRENKÖY", "ÖZMÜŞ", "İNCEÖZ"], "lat": 40.4988, "lon": 32.4952}, "geometry": {"type": "Polygon", "coordinates": [[[32.303096549896786, 40.41660770128006], [32.315372, 40.415182], [32.39609, 40.448281], [32.423892, 40.485591], [32.459445, 40.515899], [32.476705, 40.538973], [32.438982, 40.618994], [32.442702, 40.673022], [32.471331, 40.693925], [32.507091, 40.705164], [32.586156, 40.707593], [32.61917058482292, 40.70354195883654], [32.54099051812965, 40.32615422949002], [32.46397922412135, 40.27237789514254], [32.303096549896786, 40.41660770128006]]]}}, {"type": "Feature", "properties": {"ilce": "ÇANKAYA", "count": 8, "intensity": 0.0762, "settlements": ["AKARLAR", "EVCİLER", "KARAHASANLI", "KARATAŞ", "KÖMÜRCÜ", "TOHUMLAR", "YAYLA", "ÇAVUŞLU"], "lat": 39.8731, "lon": 32.8517}, "geometry": {"type": "Polygon", "coordinates": [[[33.02204473215499, 39.742644108073584], [33.00811277227572, 39.730862222602426], [32.753638210392715, 39.87502268869378], [32.79504363801468, 39.93627757294146], [32.95275868634876, 39.88409968554005], [33.02204473215499, 39.742644108073584]]]}}, {"type": "Feature", "properties": {"ilce": "ÇUBUK", "count": 78, "intensity": 0.7429, "settlements": ["AKBAYIR", "AKKUZULU", "AVCIOVA", "AĞILCIK", "AŞAĞIEMİRLER", "AŞAĞIOBRUK", "AŞAĞIÇAVUNDUR", "CAMİLİ", "DALYASAN", "DAĞKALAFAT", "DEDELER", "DEMİRCİ", "DUMLUPINAR", "DURHASAN", "ESENBOĞA MERKEZ", "ESKİÇÖTE", "EĞRİEKİN", "GÖKÇEDERE", "GÜLDARPI", "GÜMÜŞYAYLA", "HACILAR", "KAPAKLI", "KARAAĞAÇ", "KARADANA", "KARAMAN", "KARATAŞ", "KARAÇAM", "KARGIN", "KAVAKLI", "KIZILCA", "KIZILÖREN", "KIZILÖZ", "KIŞLACIK", "KURUÇAY", "KUTUÖREN", "KUYUMCU", "KÖSRELİK", "KÜÇÜKALİ", "MAHMUTOĞLAN", "MELİKŞAH", "MEŞELİ", "MUTLU", "MUTLU OSB", "NUSRATLAR", "OKÇULAR", "OVACIK", "OYUMİĞDE", "SARAYCIK", "SARIKOZ", "SARISU", "SELE", "SIĞIRLIHACI", "SUSUZ", "SÜNLÜ", "TAHTAYAZI", "TAŞPINAR", "TUĞLA", "ULUAĞAÇ", "YAKUPHASAN", "YAYLAK", "YAZIR", "YAZLICA", "YENİCE", "YEŞİLKENT", "YILDIRIMAYDOĞAN", "YILDIRIMELÖREN", "YILDIRIMEVCİ", "YILMAZKÖY", "YUKARI ÇAVUNDUR", "YUKARIEMİRLER", "YUKARIOBRUK", "YİĞİTLİ", "ÇATOKCULAR", "ÇİTKÖY", "ÖMERCİK", "ÖZLÜCE", "İKİPINAR", "İMAMHÜSEYİN"], "lat": 40.2395, "lon": 33.0388}, "geometry": {"type": "Polygon", "coordinates": [[[33.226880800252886, 40.264705360196984], [32.9668994941156, 40.140002879391304], [32.86395782947257, 40.21140366711347], [32.85671222798965, 40.37259537098982], [32.975979690987394, 40.576122747246885], [32.987372, 40.564372], [33.01042, 40.530575], [33.043389, 40.501766], [33.08101, 40.479597], [33.098166, 40.473628], [33.141161, 40.444379], [33.17258, 40.430349], [33.194284, 40.404821], [33.20555, 40.370508], [33.215175653739216, 40.364743222351244], [33.226880800252886, 40.264705360196984]]]}}, {"type": "Feature", "properties": {"ilce": "ELMADAĞ", "count": 15, "intensity": 0.1429, "settlements": ["AKÇAALİ", "AŞAĞIKAMIŞLI", "DELİLER", "EDİĞE", "KARACAHASAN", "KAYADİBİ", "KUŞÇUALİ", "LALABEL", "SEYİTCEMALİ", "SÜLEYMANLI", "TABURLAR", "TEKKE", "YENİMAHALLE", "YEŞİLDERE FATİH", "YUKARIKAMIŞLI"], "lat": 40.0139, "lon": 33.2293}, "geometry": {"type": "Polygon", "coordinates": [[[33.519620453981446, 40.0125125041819], [33.446869, 40.005723], [33.372739, 39.981597], [33.327898, 39.896897], [33.302986, 39.812197], [33.28398808324585, 39.758368721850765], [33.182423414441196, 39.781925378598906], [33.11597667259867, 40.02321963160379], [33.26043045193762, 40.19164864204237], [33.519620453981446, 40.0125125041819]]]}}, {"type": "Feature", "properties": {"ilce": "ETİMESGUT", "count": 4, "intensity": 0.0381, "settlements": ["BALIKUYUMCU", "FEVZİYE", "ORHUN", "ŞEHİTALİ"], "lat": 39.9454, "lon": 32.6706}, "geometry": {"type": "Polygon", "coordinates": [[[32.54907294857253, 39.70223755929738], [32.65249827484876, 40.04621392533971], [32.733406579098926, 39.864475171571755], [32.54907294857253, 39.70223755929738]]]}}, {"type": "Feature", "properties": {"ilce": "EVREN", "count": 13, "intensity": 0.1238, "settlements": ["ALTINBAŞAK", "CEBİRLİ", "DEMİRAYAK", "ESENTEPE", "ESKİTORUNOBASI", "MODERN", "SOLAKUŞAĞI", "YENİ", "YUSUFUŞAĞI", "ÇATALPINAR", "İBRAHİMBEYLİ", "İNEBEYLİ", "ŞERAFETTİN YILMAZ"], "lat": 39.0268, "lon": 33.525}, "geometry": {"type": "Polygon", "coordinates": [[[33.44689478559355, 39.38415735591023], [33.524497, 39.266777], [33.544961, 39.210914], [33.657512, 39.155621], [33.709188, 39.122987], [33.725415, 39.117613], [33.739264, 39.108931], [33.755594, 39.08932], [33.776058, 39.077718], [33.828768, 39.074463], [33.861427, 39.063301], [33.875276, 39.052604], [33.92841685760844, 39.037262748150454], [33.379289068984114, 38.96478571540694], [33.379596, 38.968707], [33.374428, 39.022554], [33.320581, 39.119886], [33.222706, 39.175232], [33.1855653873802, 39.18421205807539], [33.44689478559355, 39.38415735591023]]]}}, {"type": "Feature", "properties": {"ilce": "GÖLBAŞI", "count": 43, "intensity": 0.4095, "settlements": ["AHİBOZ", "AKÖRENÇARŞAK", "ALTUNÇANAK", "BALLIKPINAR", "BAĞİÇİ", "BEZİRHANE", "BOYALIK", "DİKİLİTAŞ", "EMİRLER", "GÖKÇEHÜYÜK", "GÖLBEK", "GÜNALAN", "HACIHASAN", "HACIMURATLI", "HALAÇLI", "KARAALİ MERKEZ", "KARAALİ YAZLIK", "KARACAÖREN", "KARAGEDİK AYDIN", "KARAGEDİK ERCAN", "KARAOĞLAN", "KIRIKLI", "KOPARAN", "MAHMATLI", "MAHMATLIBAHÇE", "OYACA AKARSU", "OYACA YEŞİLÇAM", "OĞULBEY", "SELAMETLİ ŞEHİT EMRAH", "SOĞULCAK", "SUBAŞI", "TEPEYURT", "TOPAKLI", "TULUMTAŞ", "VELİHİMMETLİ", "YAVRUCUK", "YAYLABAĞ", "YAĞLIPINAR", "YURTBEYİ", "ÇAYIRLI", "ÇELTEK", "ÇİMŞİT", "İKİZCE"], "lat": 39.7919, "lon": 32.8057}, "geometry": {"type": "Polygon", "coordinates": [[[33.00811277227572, 39.730862222602426], [32.814391329922174, 39.47405359642676], [32.54779131594801, 39.70064512009301], [32.54907294857253, 39.70223755929738], [32.733406579098926, 39.864475171571755], [32.753638210392715, 39.87502268869378], [33.00811277227572, 39.730862222602426]]]}}, {"type": "Feature", "properties": {"ilce": "GÜDÜL", "count": 31, "intensity": 0.2952, "settlements": ["ADALIKUZU", "AFŞAR", "AKBAŞ", "AKÇAKESE", "AŞAĞI", "BOYALI", "EMİRLER", "GARİPÇE", "GÜNEYCE", "GÜZEL", "HACILAR", "KADIOBASI", "KAMANLAR", "KARACAÖREN", "KAVAKÖZÜ", "KAYI", "KIRKKAVAK", "MEYVABÜKÜ", "SALİHLER", "SAPANLI", "SORGUN", "TAHTACIÖRENCİK", "TAŞÖREN", "YELLİ", "YENİ", "YEŞİLÖZ", "YUKARI", "ÇAĞA", "ÇUKURÖREN", "ÖZKÖY", "ÖZÇALTI"], "lat": 40.2167, "lon": 32.2423}, "geometry": {"type": "Polygon", "coordinates": [[[32.10760716694487, 40.01878844222231], [32.05226356694835, 40.39134252941056], [32.09306, 40.398878], [32.134917, 40.421021], [32.176775, 40.431279], [32.303096549896786, 40.41660770128006], [32.46397922412135, 40.27237789514254], [32.46501621226635, 40.206455077353496], [32.10760716694487, 40.01878844222231]]]}}, {"type": "Feature", "properties": {"ilce": "HAYMANA", "count": 73, "intensity": 0.6952, "settlements": ["AHIRLIKUYU", "ALAHACILI", "ALAÇIK", "ALTIPINAR", "ATAKÖY", "BAHÇECİK", "BALTALİN", "BALÇIKHİSAR", "BOSTANHÜYÜK", "BOĞAZKAYA", "BUMSUZ", "BÜYÜKKONAK", "BÜYÜKYAĞCI", "CULUK", "CİHANŞAH", "CİNGİRLİ", "DEMİRÖZÜ", "DEREKÖY", "DEVECİ", "DEVECİPINARI", "DURUPINAR", "DURUTLAR", "EMİRLER", "ESEN", "ESKİKIŞLA", "EVCİ", "EVLİYAFAKI", "GEDİK", "GÜLTEPE", "GÜZELCEKALE", "KADIKÖY", "KARAHOCA", "KARAPINAR", "KARASÜLEYMANLI", "KATRANCI", "KAVAK", "KERPİÇ", "KESİKKAVAK", "KIZILKOYUNLU", "KUTLUHAN", "KÜÇÜKKONAK", "KÜÇÜKYAĞCI", "KİRAZOĞLU", "MANDIRA", "SAATLİ", "SARIDEĞİRMEN", "SARIGÖL", "SAZAĞASI", "SERİNYAYLA", "SINDIRAN", "SIRÇASARAY", "SOĞULCA", "SÖĞÜTTEPE", "SİNANLI", "TABAKLI", "TEPEKÖY", "TOYÇAYIRI", "TÜRKHÜYÜK", "TÜRKŞEREFLİ", "YAMAK", "YAPRAKBAYIRI", "YAYLABEYİ", "YENİKÖY", "YERGÖMÜ", "YEŞİLKÖY", "YUKARISEBİL", "YURTBEYLİ", "ÇALIŞ", "ÇATAK", "ÇAYRAZ", "ÇELTİKLİ", "İNCİRLİ", "ŞEREFLİGÖKGÖZ"], "lat": 39.4314, "lon": 32.4993}, "geometry": {"type": "Polygon", "coordinates": [[[32.41618677270264, 39.720725339841], [32.54779131594801, 39.70064512009301], [32.814391329922174, 39.47405359642676], [32.87707599271427, 39.15284624950446], [32.860041, 39.157197], [32.757929, 39.092084], [32.721755, 39.054412], [32.676073, 39.033819], [32.601452, 39.058391], [32.537994, 39.035602], [32.478669, 38.997155], [32.435984, 38.999997], [32.399707, 39.026869], [32.367565, 39.041287], [32.282299, 39.063533], [32.232069, 39.05896], [32.126959, 39.034233], [32.11860183997331, 39.03635789637842], [32.41618677270264, 39.720725339841]]]}}, {"type": "Feature", "properties": {"ilce": "KAHRAMANKAZAN", "count": 43, "intensity": 0.4095, "settlements": ["AHİ", "AKINCI", "AKÇAÖREN", "ALPAGUT", "AYDIN", "AŞAĞIKARAÖREN", "BİTİK", "CİĞİR", "DAĞYAKA", "DUTÖZÜ", "EMİRGAZİ", "FETHİYE", "GÜNBAŞI", "GÜVENÇ", "KANUNİ SULTAN SÜLEYMAN", "KARALAR", "KILIÇLAR", "KINIK", "KIŞLA", "KUMPINAR", "ORHANİYE", "PEÇENEK", "SANCAR", "SARAY", "SARAYOSB", "SARAÇ", "SARIAYAK", "SARILAR", "SOĞUCAK", "TEKKE", "UÇARI", "YAKUPDERVİŞ", "YASSIÖREN", "YAYALAR", "YAZIBEYLİ", "ÇALTA", "ÇİMŞİT", "ÖRENCİK", "İMRENDİ", "İNCEĞİZ", "İNE", "İYMİR", "İÇÖREN"], "lat": 40.2237, "lon": 32.6873}, "geometry": {"type": "Polygon", "coordinates": [[[32.76285555568564, 40.10117010665324], [32.65470058870169, 40.08945052818749], [32.49549128513941, 40.15620959625514], [32.46501621226635, 40.206455077353496], [32.46397922412135, 40.27237789514254], [32.54099051812965, 40.32615422949002], [32.85671222798965, 40.37259537098982], [32.86395782947257, 40.21140366711347], [32.77872398095596, 40.114386548522226], [32.76285555568564, 40.10117010665324]]]}}, {"type": "Feature", "properties": {"ilce": "KALECİK", "count": 57, "intensity": 0.5429, "settlements": ["AFŞAR", "AHİKEMALŞENYURT", "AHİLER YENİCE", "AKCATAŞ", "AKKAYNAK", "AKKUZULU", "AKTEPE", "ALTINTAŞ", "ALİBEYLİ", "ARKBÜRK", "BEYKAVAĞI", "BUĞRA", "CUMA SARAY", "DAĞDEMİR", "DEMİRTAŞ", "DEĞİRMENKAYA", "ELMAPINAR", "ESKİKÖY", "EŞMEDERE", "GÖKDERE", "GÖKÇEÖREN", "GÖLKÖY", "GÜMÜŞPINAR", "HACIKÖY", "HALİLAĞA TABAKHANE", "HALİTCEVRİASLANGİL", "HANÇILI", "HASAYAZ", "KARAHÖYÜK", "KARALAR", "KARATEPE", "KARKIN", "KEKLİCEK", "KILÇAK", "KINIK", "KIZILKAYA", "KOYUNBABA", "KUYUCAK", "MAHMUTLAR", "SAMANLIK", "SATILAR", "TAVŞANCIK", "TİLKİ", "UYURCA", "YALIMKÖY", "YENİDOĞAN YEŞİLYURT", "YENİÇÖTE", "YEŞİLÖZ", "YILANLI", "YURTYENİCE", "YÜZBEY", "ÇANDIR", "ÇANŞA KALE", "ÇAYKAYA", "ÇİFTLİKKÖY", "ŞEMSETTİN", "ŞEYHMAHMUT"], "lat": 40.2836, "lon": 33.4157}, "geometry": {"type": "Polygon", "coordinates": [[[33.215175653739216, 40.364743222351244], [33.271386, 40.331079], [33.344663, 40.338003], [33.34921, 40.363557], [33.359959, 40.391333], [33.377942, 40.39725], [33.398199, 40.396243], [33.429515, 40.387018], [33.459694, 40.373557], [33.59519, 40.339554], [33.582064, 40.257905], [33.568525, 40.200983], [33.568525, 40.13321], [33.576587, 40.073575], [33.562069, 40.016474], [33.519620453981446, 40.0125125041819], [33.26043045193762, 40.19164864204237], [33.226880800252886, 40.264705360196984], [33.215175653739216, 40.364743222351244]]]}}, {"type": "Feature", "properties": {"ilce": "KEÇİÖREN", "count": 4, "intensity": 0.0381, "settlements": ["BAĞLUM GÜZELYURT", "KÖSRELİK", "SARIBEYLER", "ÇALSEKİ"], "lat": 40.0047, "lon": 32.8697}, "geometry": {"type": "Polygon", "coordinates": [[[32.79727326494901, 39.966294616544985], [32.76285555568564, 40.10117010665324], [32.77872398095596, 40.114386548522226], [32.923061293168644, 39.987055747416186], [32.79727326494901, 39.966294616544985]]]}}, {"type": "Feature", "properties": {"ilce": "KIZILCAHAMAM", "count": 105, "intensity": 1.0, "settlements": ["AKDOĞAN", "AKSAK", "AKÇAKESE", "ALPAGUT", "ALİBEY", "AYVACIK", "AŞAĞIADA", "AŞAĞIHÜYÜK", "AŞAĞIÇANLI", "BADEMLİ", "BALCILAR", "BAYIR", "BAĞLICA", "BAĞÖREN", "BAŞAĞAÇ", "BELPINAR", "BERÇİNYAYALAR", "BERÇİNÇATAK", "BEZCİKUZÖREN", "BEŞKONAK", "BULAK", "BİNKOZ", "CİĞİRLER", "DEMİRCİÖREN", "DERENECİ", "DEĞİRMENÖNÜ", "DOYMUŞÖREN", "DOĞANÖZÜ", "ESENLER", "EĞERLİALÖREN", "EĞERLİBAŞKÖY", "EĞERLİDERE", "EĞERLİKOZÖREN", "GAZİ MUSTAFA KEMALPAŞA", "GEBELER", "GÖKBEL", "GÖL", "GÜMELE", "GÜNEYSARAY", "GÜVEM", "HIDIRLAR", "KALEMLER", "KARAAĞAÇ", "KARACAÖREN", "KASIMLAR", "KAVAKÖZÜ", "KIRKIRCA", "KIRKÖY", "KIZIK", "KIZILCAKÖY", "KIZILCAÖREN", "KIŞLAK", "KOCALAR", "KURUMCU", "KUŞCUÖREN", "MAHKEMEAĞCİN", "OLUCAK", "ORTAKÖY", "OTACI", "OĞLAKCI", "PAZAR", "PAZAR BAŞÖREN", "PAZAR KINIK", "SALIN", "SARAY", "SARAYCIK", "SAZAK", "SEMELER", "SEMER", "SÜLELER", "TAHTALAR", "TAŞLICA", "TURNALI", "UĞURLU", "YAKAKAYA", "YANIK ÖZBEKLER", "YAĞCIHÜSEYİN", "YEŞİLKÖY", "YILDIRIMDEMİRCİLER", "YILDIRIMHACILAR", "YILDIRIMYAĞLICA", "YILDIRIMÇATAK", "YILDIRIMÖREN", "YUKARIADA", "YUKARIHÜYÜK", "YUKARIKARAÖREN", "YUKARIKESE", "YUKARIÇANLI", "ÇAVUŞLAR", "ÇELTİKÇİ", "ÇELTİKÇİ AKÇAÖREN", "ÇELTİKÇİ BAŞÖREN", "ÇELTİKÇİ KINIK", "ÇEŞTEPE", "ÇIRPAN", "ÇUKURCA", "ÇUKURÖREN", "ÖRENCİK", "ÜYÜCEK", "ÜÇBAŞ", "İNCEĞEZ", "İYCELER", "İĞDİR", "İĞMİR", "ŞAHİNLER"], "lat": 40.4664, "lon": 32.6516}, "geometry": {"type": "Polygon", "coordinates": [[[32.85671222798965, 40.37259537098982], [32.54099051812965, 40.32615422949002], [32.61917058482292, 40.70354195883654], [32.665118, 40.697904], [32.95864, 40.594008], [32.975979690987394, 40.576122747246885], [32.85671222798965, 40.37259537098982]]]}}, {"type": "Feature", "properties": {"ilce": "MAMAK", "count": 8, "intensity": 0.0762, "settlements": ["BAYINDIR", "GÖKÇEYURT", "KARŞIYAKA", "KIZILCA", "KUTLUDÜĞÜN", "LALAHAN", "ORTAKÖY", "YUKARI İMROHOR"], "lat": 39.9572, "lon": 33.0234}, "geometry": {"type": "Polygon", "coordinates": [[[33.00475182987996, 40.0648502210925], [33.11597667259867, 40.02321963160379], [33.182423414441196, 39.781925378598906], [33.02204473215499, 39.742644108073584], [32.95275868634876, 39.88409968554005], [32.95010471792754, 39.98043873923049], [33.00475182987996, 40.0648502210925]]]}}, {"type": "Feature", "properties": {"ilce": "NALLIHAN", "count": 75, "intensity": 0.7143, "settlements": ["AKSU", "ALAN", "ALPAĞUT", "ALİEFE", "ARKUTÇA", "ATÇA", "AYDOĞMUŞ", "AŞAĞIBAĞDERE", "AŞAĞIBAĞLICA", "AŞAĞIKAVACIK", "BELENALAN", "BELENÖREN", "BEYALAN", "BEYCİK", "BEYDİLİ", "BOZYAKA", "CENDERE", "DANİŞMENT", "DAVUTOĞLAN", "DEMİRKÖY", "DEREKÖY", "DOĞANDERE", "DÖĞMECİ", "EMREMSULTAN", "EPÇELER", "ERİCEK", "EYMİR", "EĞRİ", "GÖKÇEÖZ", "GÜZELÖZ", "HACIHASANLAR", "HIDIRLAR", "KABACA", "KADIKÖY", "KARACASU", "KARAHİSAR", "KARAHİSARGÖLCÜK", "KARAHİSARKOZLU", "KARAKÖY", "KAVAKKÖY", "KULU", "KURUCA", "KUZUCULAR", "MEYİLDERE", "MEYİLHACILAR", "NALLIDERE", "NALLIGÖLCÜK", "NEBİOĞLU", "OSMANKÖY", "OZAN", "SARIKAYA", "SARIYAR", "SOBRAN", "SOĞUKKUYU", "SUBAŞI", "TEKKE", "TEKİRLER", "TEPE", "ULUHAN", "ULUKÖY", "UZUNÖZ", "YAKAPINAR", "YENİCE", "YEŞİLYURT", "YUKARIBAĞDERE", "YUKARIBAĞLICA", "YUKARIKAVACIK", "ÇALICAALAN", "ÇAMALAN", "ÇULHALAR", "ÇİLLER", "ÇİVE", "ÖMERŞEYHLER", "ÖŞÜRLER", "İSLAMALAN"], "lat": 40.1847, "lon": 31.3547}, "geometry": {"type": "Polygon", "coordinates": [[[31.63411152748733, 40.038347154240334], [31.604097, 40.029986], [31.531543, 40.029107], [31.492579, 40.022054], [31.459817, 40.030063], [31.430774, 40.023578], [31.389123, 40.056883], [31.364112, 40.05448], [31.338894, 40.048279], [31.24691, 40.05771], [31.219728, 40.039133], [31.191099, 40.024095], [31.164744, 40.031304], [31.139939, 40.043551], [31.081648, 40.048124], [30.98646, 40.016524], [30.945739, 40.014638], [30.922072, 40.020012], [30.916594, 40.040864], [30.906672, 40.100576], [30.863574, 40.142796], [30.925379, 40.205737], [31.007234, 40.241601], [31.03824, 40.292166], [31.034106, 40.352421], [31.043925, 40.389886], [31.069246, 40.411332], [31.162987, 40.386941], [31.25094, 40.345961], [31.419716, 40.359656], [31.452375, 40.332009], [31.475009, 40.324102], [31.504465, 40.321053], [31.535574, 40.311622], [31.567924, 40.308496], [31.64223237900189, 40.33137023595989], [31.63411152748733, 40.038347154240334]]]}}, {"type": "Feature", "properties": {"ilce": "POLATLI", "count": 82, "intensity": 0.781, "settlements": ["ADATOPRAKPINAR", "AVDANLI", "AVŞAR", "BABAYAKUP", "BEYCEĞİZ", "BEYLİKKÖPRÜ", "BEŞKÖPRÜ", "ESKİKARSAK", "ESKİKÖSELER", "ESKİPOLATLI", "GEDİKLİ", "GENÇALİ", "GÜLPINAR", "GÜMÜŞYAKA", "GÜNDOĞAN", "GÜREŞ", "HACIMUSA", "HACIMUSLU", "HACIOSMANOĞLU", "HACITUĞRUL", "HIDIRŞEYH", "ILICA", "KABAK", "KARAAHMET", "KARABENLİ", "KARACAAHMET", "KARAHAMZALI", "KARAKAYA", "KARAKUYU", "KARAPINAR", "KARAYAVŞAN", "KARAİLYAS", "KARGALI", "KAYABAŞI", "KIRANHARMANI", "KIZILCAKIŞLA", "KOCAHACILI", "KUŞCU", "MACUN", "MÜSLÜM", "OLUKPINAR", "OĞUZLAR", "POYRAZ", "SABANCA", "SAKARYA", "SARIHALİL", "SARIOBA", "SAZLAR", "SİNANLI", "SİNCİK", "SİVRİ", "TATLIKUYU", "TAŞPINAR", "TOYDEMİR", "TÜFEKÇİOĞLU", "TÜRKKARSAK", "TÜRKTACİRİ", "UZUNBEY", "YARALI", "YASSIHÜYÜK", "YAĞCIOĞLU", "YAĞMURBABA", "YENİCE", "YENİDOĞAN", "YENİKÖSELER", "YENİMEHMETLİ", "YEŞİLÖZ", "YILDIZLI", "YÜZÜKBAŞI", "ÇANAKÇI", "ÇEKİRDEKSİZ", "ÇEKİRDEKSİZOSB", "ÇİMENCEĞİZ", "ÖMERLER", "ÖRDEKGÖLÜ", "ÖZYURT", "ÜÇPINAR", "İNLER", "İĞCİLER", "ŞABANÖZÜ", "ŞEYHALİ", "ŞIHAHMETLİ"], "lat": 39.5842, "lon": 32.1479}, "geometry": {"type": "Polygon", "coordinates": [[[32.06053893577386, 39.88667471227759], [32.41246099357492, 39.72489294892458], [32.41618677270264, 39.720725339841], [32.11860183997331, 39.03635789637842], [32.090579, 39.043483], [31.948159, 39.136423], [31.904751, 39.156577], [31.861446, 39.171434], [31.88532, 39.18505], [31.93834, 39.204532], [31.948469, 39.215049], [31.956117, 39.225513], [31.978028, 39.230474], [31.999939, 39.232722], [32.023606, 39.251067], [32.042727, 39.275122], [32.035802, 39.305276], [32.004279, 39.322251], [31.983299, 39.348245], [31.982679, 39.386485], [31.979578, 39.391963], [31.975237, 39.404934], [31.984952, 39.435113], [31.990533, 39.465188], [31.991154, 39.49591], [31.979475, 39.516761], [31.965109, 39.5349], [31.961181, 39.566164], [31.946919, 39.586473], [31.896999, 39.620605], [31.847286, 39.725896], [31.840775, 39.775764], [31.881703, 39.811782], [31.881261381713283, 39.817177069484266], [32.06053893577386, 39.88667471227759]]]}}, {"type": "Feature", "properties": {"ilce": "PURSAKLAR", "count": 8, "intensity": 0.0762, "settlements": ["ABADAN", "KARAKÖY", "KARŞIYAKA", "KÖSRELİKKIZIĞI", "SİRKELİ YEŞİLOVA", "SİRKELİ YEŞİLYURT", "YENİ KARAKÖY", "YUVA"], "lat": 40.0378, "lon": 32.8989}, "geometry": {"type": "Polygon", "coordinates": [[[32.77872398095596, 40.114386548522226], [32.86395782947257, 40.21140366711347], [32.9668994941156, 40.140002879391304], [33.00475182987996, 40.0648502210925], [32.95010471792754, 39.98043873923049], [32.923061293168644, 39.987055747416186], [32.77872398095596, 40.114386548522226]]]}}, {"type": "Feature", "properties": {"ilce": "SİNCAN", "count": 29, "intensity": 0.2762, "settlements": ["AHİ EVRAN OSB", "AKÇAÖREN", "ALAGÖZ", "ALCI", "ALCI OSB", "ANAYURT", "BACI", "BEYOBASI", "ERKEKSU", "ESENLER", "GİRMEÇ", "HİSARLIKAYA", "KESİKTAŞ", "MALIKÖY", "MALIKÖY ANADOLU OSB", "MALIKÖY BAŞKENT OSB", "MÜLK", "OSMANİYE", "POLATLAR", "TATLAR", "TÜRKOBASI", "YENİHİSAR", "YENİKAYI", "YENİPEÇENEK", "ÇOKÖREN", "ÇİÇEKTEPE", "ÜCRET", "İLYAKUT", "İNCİRLİK"], "lat": 39.9721, "lon": 32.5818}, "geometry": {"type": "Polygon", "coordinates": [[[32.54907294857253, 39.70223755929738], [32.54779131594801, 39.70064512009301], [32.41618677270264, 39.720725339841], [32.41246099357492, 39.72489294892458], [32.49549128513941, 40.15620959625514], [32.65470058870169, 40.08945052818749], [32.65249827484876, 40.04621392533971], [32.54907294857253, 39.70223755929738]]]}}, {"type": "Feature", "properties": {"ilce": "ŞEREFLİKOÇHİSAR", "count": 47, "intensity": 0.4476, "settlements": ["ACIKUYU", "ACIÖZ", "AKARCA", "AKTAŞ", "AKİN", "ALİUŞAĞI", "BALTALI", "BAĞOBASI", "BÜYÜKDAMLACIK", "BÜYÜKKIŞLA", "CINGIL", "DELİLLER", "DEVEKOVAN", "DOĞANKAYA", "ELEY", "FADILLI", "GEÇİTLİ", "GÜLHÜYÜK", "HACIBEKTAŞLI", "HAMZALI", "HAYDARLI", "KACARLI", "KADINCIK", "KADIOBASI", "KARABÜK", "KARAMOLLAUŞAĞI", "KARANDERE", "KÜÇÜKDAMLACIK", "MUSULAR", "ODUNBOĞAZI", "PALAZOBASI", "PARLASAN", "SADIKLI", "SEYMENLİ", "YALNIZPINAR", "YAZISÖĞÜT", "YEŞİLYURT", "YUSUFKUYUSU", "ÇALÖREN", "ÇATÇAT", "ÇAVUŞKÖY", "ÇAYIRÖNÜ", "ÜZENGİLİK", "ŞANLIKIŞLA", "ŞEKERKÖY", "ŞEREFLİDAVUTLU", "ŞEYHLİ"], "lat": 38.9427, "lon": 33.5361}, "geometry": {"type": "Polygon", "coordinates": [[[33.92841685760844, 39.037262748150454], [33.937391, 39.034672], [33.930053, 39.001082], [33.89667, 38.934988], [33.936565, 38.850445], [33.933257, 38.792258], [33.849748, 38.730117], [33.811611, 38.715415], [33.722417, 38.717637], [33.635394, 38.698698], [33.553539, 38.661982], [33.466619, 38.643585], [33.444915, 38.683737], [33.413392, 38.719678], [33.387244, 38.75797], [33.36616, 38.798692], [33.363783, 38.856802], [33.375359, 38.914576], [33.379289068984114, 38.96478571540694], [33.92841685760844, 39.037262748150454]]]}}, {"type": "Feature", "properties": {"ilce": "YENİMAHALLE", "count": 4, "intensity": 0.0381, "settlements": ["KARACAKAYA", "MEMLİK", "İVEDİKKÖY", "İVEDİKOSB"], "lat": 39.9653, "lon": 32.7153}, "geometry": {"type": "Polygon", "coordinates": [[[32.79504363801468, 39.93627757294146], [32.753638210392715, 39.87502268869378], [32.733406579098926, 39.864475171571755], [32.65249827484876, 40.04621392533971], [32.65470058870169, 40.08945052818749], [32.76285555568564, 40.10117010665324], [32.79727326494901, 39.966294616544985], [32.79504363801468, 39.93627757294146]]]}}]};
+const BOUNDARY = {"type": "Polygon", "coordinates": [[[32.315372, 40.415182], [32.39609, 40.448281], [32.423892, 40.485591], [32.459445, 40.515899], [32.476705, 40.538973], [32.438982, 40.618994], [32.442702, 40.673022], [32.471331, 40.693925], [32.507091, 40.705164], [32.586156, 40.707593], [32.665118, 40.697904], [32.95864, 40.594008], [32.987372, 40.564372], [33.01042, 40.530575], [33.043389, 40.501766], [33.08101, 40.479597], [33.098166, 40.473628], [33.141161, 40.444379], [33.17258, 40.430349], [33.194284, 40.404821], [33.20555, 40.370508], [33.271386, 40.331079], [33.344663, 40.338003], [33.34921, 40.363557], [33.359959, 40.391333], [33.377942, 40.39725], [33.398199, 40.396243], [33.429515, 40.387018], [33.459694, 40.373557], [33.59519, 40.339554], [33.582064, 40.257905], [33.568525, 40.200983], [33.568525, 40.13321], [33.576587, 40.073575], [33.562069, 40.016474], [33.446869, 40.005723], [33.372739, 39.981597], [33.327898, 39.896897], [33.302986, 39.812197], [33.273092, 39.727496], [33.298004, 39.642796], [33.377721, 39.568061], [33.406016, 39.529731], [33.444753, 39.387397], [33.524497, 39.266777], [33.544961, 39.210914], [33.657512, 39.155621], [33.709188, 39.122987], [33.725415, 39.117613], [33.739264, 39.108931], [33.755594, 39.08932], [33.776058, 39.077718], [33.828768, 39.074463], [33.861427, 39.063301], [33.875276, 39.052604], [33.937391, 39.034672], [33.930053, 39.001082], [33.89667, 38.934988], [33.936565, 38.850445], [33.933257, 38.792258], [33.849748, 38.730117], [33.811611, 38.715415], [33.722417, 38.717637], [33.635394, 38.698698], [33.553539, 38.661982], [33.466619, 38.643585], [33.444915, 38.683737], [33.413392, 38.719678], [33.387244, 38.75797], [33.36616, 38.798692], [33.363783, 38.856802], [33.375359, 38.914576], [33.379596, 38.968707], [33.374428, 39.022554], [33.320581, 39.119886], [33.222706, 39.175232], [33.166069, 39.188926], [33.148086, 39.196781], [33.104781, 39.222102], [33.062406, 39.222077], [33.043389, 39.202078], [33.032124, 39.17549], [33.023649, 39.123607], [33.009076, 39.105081], [32.965771, 39.110507], [32.907997, 39.144949], [32.860041, 39.157197], [32.757929, 39.092084], [32.721755, 39.054412], [32.676073, 39.033819], [32.601452, 39.058391], [32.537994, 39.035602], [32.478669, 38.997155], [32.435984, 38.999997], [32.399707, 39.026869], [32.367565, 39.041287], [32.282299, 39.063533], [32.232069, 39.05896], [32.126959, 39.034233], [32.090579, 39.043483], [31.948159, 39.136423], [31.904751, 39.156577], [31.861446, 39.171434], [31.88532, 39.18505], [31.93834, 39.204532], [31.948469, 39.215049], [31.956117, 39.225513], [31.978028, 39.230474], [31.999939, 39.232722], [32.023606, 39.251067], [32.042727, 39.275122], [32.035802, 39.305276], [32.004279, 39.322251], [31.983299, 39.348245], [31.982679, 39.386485], [31.979578, 39.391963], [31.975237, 39.404934], [31.984952, 39.435113], [31.990533, 39.465188], [31.991154, 39.49591], [31.979475, 39.516761], [31.965109, 39.5349], [31.961181, 39.566164], [31.946919, 39.586473], [31.896999, 39.620605], [31.847286, 39.725896], [31.840775, 39.775764], [31.881703, 39.811782], [31.879533, 39.838292], [31.86713, 39.845294], [31.852454, 39.86196], [31.845013, 39.876068], [31.81163, 39.878135], [31.782277, 39.890537], [31.756956, 39.920251], [31.743003, 39.95136], [31.738663, 39.976397], [31.726054, 39.994071], [31.726984, 40.023526], [31.681198, 40.018385], [31.640271, 40.040063], [31.604097, 40.029986], [31.531543, 40.029107], [31.492579, 40.022054], [31.459817, 40.030063], [31.430774, 40.023578], [31.389123, 40.056883], [31.364112, 40.05448], [31.338894, 40.048279], [31.24691, 40.05771], [31.219728, 40.039133], [31.191099, 40.024095], [31.164744, 40.031304], [31.139939, 40.043551], [31.081648, 40.048124], [30.98646, 40.016524], [30.945739, 40.014638], [30.922072, 40.020012], [30.916594, 40.040864], [30.906672, 40.100576], [30.863574, 40.142796], [30.925379, 40.205737], [31.007234, 40.241601], [31.03824, 40.292166], [31.034106, 40.352421], [31.043925, 40.389886], [31.069246, 40.411332], [31.162987, 40.386941], [31.25094, 40.345961], [31.419716, 40.359656], [31.452375, 40.332009], [31.475009, 40.324102], [31.504465, 40.321053], [31.535574, 40.311622], [31.567924, 40.308496], [31.657737, 40.336143], [31.696495, 40.339993], [31.821448, 40.338417], [31.906094, 40.353351], [31.975134, 40.377096], [32.09306, 40.398878], [32.134917, 40.421021], [32.176775, 40.431279], [32.315372, 40.415182]]]};
+const BAR_LABELS = ["KIZILCAHAMAM", "POLATLI", "ÇUBUK", "NALLIHAN", "HAYMANA", "BEYPAZARI", "KALECİK", "BALA", "ÇAMLIDERE", "ŞEREFLİKOÇHİSAR", "KAHRAMANKAZAN", "GÖLBAŞI", "AYAŞ", "GÜDÜL", "SİNCAN", "AKYURT", "ELMADAĞ", "EVREN", "PURSAKLAR", "ÇANKAYA", "MAMAK", "ALTINDAĞ", "ETİMESGUT", "KEÇİÖREN", "YENİMAHALLE"];
+const BAR_VALUES = [105, 82, 78, 75, 73, 68, 57, 55, 48, 47, 43, 43, 33, 31, 29, 20, 15, 13, 8, 8, 8, 5, 4, 4, 4];
+
+// ── Renk ──────────────────────────────────────────────────────────────────
+function intensityColor(t, alpha){
+  // t: 0..1  →  koyu yeşilden açık yeşile (ters: çok alan = koyu)
+  const r = Math.round(5  + t*(187-5));
+  const g = Math.round(83 + t*(247-83));
+  const b = Math.round(43 + t*(176-43));
+  return alpha != null ? `rgba(${r},${g},${b},${alpha})` : `rgb(${r},${g},${b})`;
+}
+
+// ── Bar Chart ─────────────────────────────────────────────────────────────
+const ctx = document.getElementById('barChart').getContext('2d');
+new Chart(ctx, {
+  type: 'bar',
+  data: {
+    labels: BAR_LABELS,
+    datasets:[{
+      data: BAR_VALUES,
+      backgroundColor: BAR_VALUES.map(v => intensityColor(v/105, 0.85)),
+      borderColor: BAR_VALUES.map(v => intensityColor(v/105, 1)),
+      borderWidth: 1,
+      borderRadius: 3,
+    }]
+  },
+  options:{
+    indexAxis:'y',
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{
+      callbacks:{label: ctx => ' '+ctx.raw+' kırsal mahalle/köy'}
+    }},
+    scales:{
+      x:{grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#64748b',font:{size:10}}},
+      y:{grid:{display:false},ticks:{color:'#94a3b8',font:{size:9}}}
+    }
+  }
+});
+
+// ── Sidebar listesi ───────────────────────────────────────────────────────
+const listEl = document.getElementById('list');
+
+function buildList(filterText){
+  listEl.innerHTML = '';
+  let totalVisible = 0;
+  let ilceVisible = 0;
+
+  GEO.features
+    .slice().sort((a,b) => b.properties.count - a.properties.count)
+    .forEach(feat => {
+      const p = feat.properties;
+      const settlements = p.settlements;
+      const filtered = filterText
+        ? settlements.filter(s => s.toLowerCase().includes(filterText.toLowerCase()))
+        : settlements;
+      if(!filtered.length) return;
+
+      totalVisible += filtered.length;
+      ilceVisible++;
+
+      const grp = document.createElement('div');
+      grp.className = 'ilce-group';
+
+      const hdr = document.createElement('div');
+      hdr.className = 'ilce-hdr';
+      hdr.dataset.ilce = p.ilce;
+      hdr.innerHTML = `<span>${p.ilce}</span><span class="badge">${filtered.length}</span><span class="arrow">›</span>`;
+      if(filterText) hdr.classList.add('open');
+      hdr.onclick = () => {
+        hdr.classList.toggle('open');
+        flyToDistrict(p.ilce);
+      };
+
+      const mahDiv = document.createElement('div');
+      mahDiv.className = 'mah-list';
+      filtered.forEach(m => {
+        const item = document.createElement('div');
+        item.className = 'mah-item';
+        item.textContent = m;
+        item.dataset.ilce = p.ilce;
+        item.onclick = () => flyToDistrict(p.ilce);
+        mahDiv.appendChild(item);
+      });
+
+      grp.appendChild(hdr);
+      grp.appendChild(mahDiv);
+      listEl.appendChild(grp);
+    });
+
+  document.getElementById('list-count').textContent =
+    `${totalVisible} yerleşim · ${ilceVisible} ilçe`;
+}
+buildList('');
+
+function onSearch(val){
+  buildList(val.trim());
+}
+
+// ── Leaflet Haritası ─────────────────────────────────────────────────────
+const map = L.map('map',{center:[39.75,32.5],zoom:8,zoomControl:true,preferCanvas:true});
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+  attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:19
+}).addTo(map);
+
+// Ankara il sınırı
+L.geoJSON({type:'Feature',properties:{},geometry:BOUNDARY},{
+  style:{color:'#38bdf8',weight:2,fill:false,dashArray:'6 4',opacity:.7}
+}).addTo(map);
+
+// Choropleth katmanı
+let activeLayer = null;
+const districtLayers = {};
+
+const choropleth = L.geoJSON(GEO,{
+  style: feat => {
+    const t = feat.properties.intensity;
+    return {
+      fillColor: intensityColor(t, null),
+      fillOpacity: 0.55 + t*0.30,
+      color: '#0a0f1e',
+      weight: 1.5,
+    };
+  },
+  onEachFeature: (feat, layer) => {
+    const p = feat.properties;
+    districtLayers[p.ilce] = layer;
+
+    const mahRows = p.settlements.slice(0,20)
+      .map(m => `<div class="popup-mah">${m}</div>`).join('');
+    const extra = p.settlements.length > 20 ? `<div class="popup-note">+${p.settlements.length-20} yerleşim daha…</div>` : '';
+
+    layer.bindPopup(`
+      <div class="popup-title">📍 ${p.ilce}</div>
+      <div class="popup-count">${p.count}</div>
+      <div class="popup-label">Kırsal Yerleşim Birimi</div>
+      <div class="popup-grid">${mahRows}</div>
+      ${extra}
+      <div class="popup-note" style="margin-top:8px">✓ TKDK Hibe Desteğine Uygun</div>
+    `, {maxWidth:340});
+
+    layer.on('mouseover', e => {
+      if(activeLayer !== layer)
+        layer.setStyle({fillOpacity:Math.min(0.9, 0.55+p.intensity*0.30+0.2), weight:2.5, color:'#22c55e'});
+    });
+    layer.on('mouseout', e => {
+      if(activeLayer !== layer)
+        choropleth.resetStyle(layer);
+    });
+    layer.on('click', () => {
+      if(activeLayer && activeLayer !== layer) choropleth.resetStyle(activeLayer);
+      activeLayer = layer;
+      layer.setStyle({fillOpacity:0.9, weight:3, color:'#86efac'});
+      highlightSidebar(p.ilce);
+    });
+  }
+}).addTo(map);
+
+// İlçe etiketleri
+GEO.features.forEach(feat => {
+  const p = feat.properties;
+  L.marker([p.lat, p.lon],{
+    icon: L.divIcon({
+      html:`<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 1px 3px rgba(0,0,0,.9);pointer-events:none;white-space:nowrap;text-align:center">${p.ilce}</div>`,
+      className:'', iconSize:[120,14], iconAnchor:[60,7]
+    }), interactive:false
+  }).addTo(map);
+});
+
+// ── Etkileşim ─────────────────────────────────────────────────────────────
+function flyToDistrict(ilce){
+  const layer = districtLayers[ilce];
+  if(!layer) return;
+  if(activeLayer && activeLayer !== layer) choropleth.resetStyle(activeLayer);
+  activeLayer = layer;
+  layer.setStyle({fillOpacity:0.9, weight:3, color:'#86efac'});
+  map.flyToBounds(layer.getBounds(), {padding:[40,40], duration:.8});
+  layer.openPopup();
+}
+
+function highlightSidebar(ilce){
+  document.querySelectorAll('.ilce-hdr').forEach(h => {
+    const isTarget = h.dataset.ilce === ilce;
+    if(isTarget){
+      h.classList.add('open');
+      h.scrollIntoView({behavior:'smooth', block:'nearest'});
+    }
+  });
+  document.querySelectorAll('.mah-item').forEach(el => {
+    el.classList.toggle('highlight', el.dataset.ilce === ilce);
+  });
+}
+</script>
+</body>
+</html>
